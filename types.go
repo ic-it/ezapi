@@ -1,15 +1,15 @@
-package goreapi
+package ezapi
 
-type GoreError interface {
+type RespError interface {
 	error
 
 	Render(BaseContext) error
 }
 
 type Validatable interface {
-	Validate(BaseContext) GoreError
+	Validate(BaseContext) RespError
 }
 
 type OnUnmarshalError interface {
-	OnUnmarshalError(BaseContext, error) GoreError
+	OnUnmarshalError(BaseContext, error) RespError
 }

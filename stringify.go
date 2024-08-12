@@ -1,22 +1,20 @@
-package goreapi
+package ezapi
 
 import "fmt"
 
 func (r reflectedReq) String() string {
 	return fmt.Sprintf(
-		"ReflectedReq{jsonBodyType: %v, jsonBodyFieldName: %v, pathParams: %v, pathParamsFieldName: %v, queryParams: %v, queryParamsFieldName: %v, isValidatable: %v, isOnParseError: %v}",
+		"ReflectedReq{jsonBodyType: %v, jsonBodyFieldName: %v, pathParams: %v, pathParamsFieldName: %v, queryParams: %v, queryParamsFieldName: %v}",
 		r.jsonBodyType,
 		r.jsonBodyFieldName,
 		r.pathParams,
 		r.pathParamsFieldName,
 		r.queryParams,
 		r.queryParamsFieldName,
-		r.isValidatable,
-		r.isOnUnmarshalError,
 	)
 }
 
-func (p reflectedParam) String() string {
+func (p reflectedKeyVal) String() string {
 	return fmt.Sprintf("ReflectedParam{typ: %v, fieldName: %v, alias: %v, optional: %v}",
 		p.typ, p.fieldName, p.alias, p.optional)
 }

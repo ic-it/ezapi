@@ -1,4 +1,4 @@
-package goreapi
+package ezapi
 
 import (
 	"encoding"
@@ -15,6 +15,7 @@ type unmarshaler[T any] func(
 	body io.Reader,
 	pathParams map[string]string,
 	queryParams map[string][]string,
+	contextValues map[string]interface{},
 ) (T, error)
 
 // build unmarshaler for given reflectedReq
@@ -103,11 +104,47 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 		return v.Interface(), nil
 	}
 
+	conextValuesUnmarshaler := func(contextValues map[string]interface{}) (any, error) {
+		v := reflect.New(reflected.contextValuesType).Elem()
+		for _, param := range reflected.contextValues {
+			field := v.FieldByName(param.fieldName)
+			if !field.IsValid() {
+				return nil, errInvalidField
+			}
+
+			value, ok := contextValues[param.alias]
+			if !ok {
+				if !param.optional {
+					return nil, errMissingParam
+				}
+				continue
+			}
+			if value == nil && !param.optional {
+				return nil, errMissingParam
+			}
+
+			var unmarshaled any
+			if str, ok := value.(string); ok {
+				var err error
+				unmarshaled, err = unmarshalType(param.typ, str)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				unmarshaled = value
+			}
+
+			field.Set(reflect.ValueOf(unmarshaled))
+		}
+		return v.Interface(), nil
+	}
+
 	// return the unmarshaler
 	return func(
 		body io.Reader,
 		pathParams map[string]string,
 		queryParams map[string][]string,
+		contextValues map[string]interface{},
 	) (T, error) {
 		var req reflect.Value
 		{
@@ -148,6 +185,18 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 			field := req.FieldByName(reflected.queryParamsFieldName)
 			if field.IsValid() {
 				field.Set(reflect.ValueOf(queryParamsStruct))
+			}
+		}
+
+		// unmarshal context values
+		if reflected.hasContextValues() {
+			contextValuesStruct, err := conextValuesUnmarshaler(contextValues)
+			if err != nil {
+				return req.Interface().(T), err
+			}
+			field := req.FieldByName(reflected.contextValuesName)
+			if field.IsValid() {
+				field.Set(reflect.ValueOf(contextValuesStruct))
 			}
 		}
 

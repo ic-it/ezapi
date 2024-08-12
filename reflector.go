@@ -1,4 +1,4 @@
-package goreapi
+package ezapi
 
 import (
 	"fmt"
@@ -6,51 +6,19 @@ import (
 	"strings"
 )
 
-/*
-
-type CreateUserReqBody struct {
-	Name     string `json:"name"`
-	Age      int    `json:"age,omitempty"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-// Example of code we want to reflect:
-type CreateUserReq struct {
-	JSONBody CreateUserReqBody  `gore:"jsonBody"`
-	PathParams struct {
-		ID int `gore:"id"`
-	} `gore:"path"`
-	QueryParams struct {
-		ID int `gore:"id"`
-		Status string `gore:"status,optional"`
-	} `gore:"query"`
-}
-
-func (r CreateUserReq) Validate(goreCtx GoreContext) error {
-	log.Println("Validating")
-	return nil
-}
-
-func (r CreateUserReq) OnParseError(ctx GoreContext, err error) error {
-	log.Println(err)
-	return err
-}
-
-*/
-
 const (
 	// tag name
-	_GORE_TAG_NAME = "gore"
+	_EZAPI_TAG_NAME = "ezapi"
 
 	// tag values
-	_GORE_TAG_JSON_BODY    = "jsonBody"
-	_GORE_TAG_PATH_PARAMS  = "path"
-	_GORE_TAG_QUERY_PARAMS = "query"
+	_EZAPI_TAG_JSON_BODY    = "jsonBody"
+	_EZAPI_TAG_PATH_PARAMS  = "path"
+	_EZAPI_TAG_QUERY_PARAMS = "query"
+	_EZAPI_TAG_CONTEXT      = "context"
 
 	// tag values for params
-	_GORE_TAG_OPTIONAL = "optional"
-	_GORE_TAG_REQUIRED = "required"
+	_EZAPI_TAG_OPTIONAL = "optional"
+	_EZAPI_TAG_REQUIRED = "required"
 )
 
 // to this struct represents the reflected struct
@@ -59,16 +27,16 @@ type reflectedReq struct {
 	jsonBodyFieldName string
 
 	pathParamsType      reflect.Type
-	pathParams          []reflectedParam
+	pathParams          []reflectedKeyVal
 	pathParamsFieldName string
 
 	queryParamsType      reflect.Type
-	queryParams          []reflectedParam
+	queryParams          []reflectedKeyVal
 	queryParamsFieldName string
 
-	// interface implementations
-	isValidatable      bool
-	isOnUnmarshalError bool
+	contextValuesType reflect.Type
+	contextValues     []reflectedKeyVal
+	contextValuesName string
 }
 
 func (rq reflectedReq) hasJSONBody() bool {
@@ -83,8 +51,12 @@ func (rq reflectedReq) hasQueryParams() bool {
 	return rq.queryParamsType != nil
 }
 
-// reflected params
-type reflectedParam struct {
+func (rq reflectedReq) hasContextValues() bool {
+	return rq.contextValuesType != nil
+}
+
+// reflected key value pair
+type reflectedKeyVal struct {
 	typ       reflect.Type
 	fieldName string
 
@@ -105,22 +77,26 @@ func ReflectReq[T any]() reflectedReq {
 	// Iterate over the fields of the struct
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		tag := field.Tag.Get(_GORE_TAG_NAME)
+		tag := field.Tag.Get(_EZAPI_TAG_NAME)
 
-		// If the field has the gore tag
+		// If the field has the
 		if tag != "" {
 			switch tag {
-			case _GORE_TAG_JSON_BODY:
+			case _EZAPI_TAG_JSON_BODY:
 				reflected.jsonBodyType = field.Type
 				reflected.jsonBodyFieldName = field.Name
-			case _GORE_TAG_PATH_PARAMS:
+			case _EZAPI_TAG_PATH_PARAMS:
 				reflected.pathParamsType = field.Type
 				reflected.pathParamsFieldName = field.Name
 				reflected.pathParams, err = reflectParams(field.Type)
-			case _GORE_TAG_QUERY_PARAMS:
+			case _EZAPI_TAG_QUERY_PARAMS:
 				reflected.queryParamsType = field.Type
 				reflected.queryParamsFieldName = field.Name
 				reflected.queryParams, err = reflectParams(field.Type)
+			case _EZAPI_TAG_CONTEXT:
+				reflected.contextValuesType = field.Type
+				reflected.contextValuesName = field.Name
+				reflected.contextValues, err = reflectParams(field.Type)
 			}
 		}
 
@@ -129,35 +105,25 @@ func ReflectReq[T any]() reflectedReq {
 		}
 	}
 
-	// Check if the struct implements the Validate method
-	if _, ok := any(v).(Validatable); ok {
-		reflected.isValidatable = true
-	}
-
-	// Check if the struct implements the OnUnmarshalError method
-	if _, ok := any(v).(OnUnmarshalError); ok {
-		reflected.isOnUnmarshalError = true
-	}
-
 	return reflected
 }
 
 // reflectParams is a helper function that reflects the params struct
-func reflectParams(t reflect.Type) ([]reflectedParam, error) {
+func reflectParams(t reflect.Type) ([]reflectedKeyVal, error) {
 	if t.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("params must be a struct %v", t)
 	}
-	params := []reflectedParam{}
+	params := []reflectedKeyVal{}
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		tag := field.Tag.Get(_GORE_TAG_NAME)
+		tag := field.Tag.Get(_EZAPI_TAG_NAME)
 
-		// If the field has the gore tag
+		// If the field has the
 		if tag == "" {
 			continue
 		}
-		param := reflectedParam{
+		param := reflectedKeyVal{
 			typ:       field.Type,
 			fieldName: field.Name,
 			alias:     field.Name,
@@ -168,9 +134,9 @@ func reflectParams(t reflect.Type) ([]reflectedParam, error) {
 		tagValues := strings.Split(tag, ",")
 		for _, tagValue := range tagValues {
 			switch tagValue {
-			case _GORE_TAG_OPTIONAL:
+			case _EZAPI_TAG_OPTIONAL:
 				param.optional = true
-			case _GORE_TAG_REQUIRED:
+			case _EZAPI_TAG_REQUIRED:
 				param.optional = false
 			default:
 				param.alias = tagValue

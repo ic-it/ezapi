@@ -1,4 +1,4 @@
-module github.com/ic-it/goreapi
+module github.com/ic-it/ezapi
 
 go 1.22.2
 
