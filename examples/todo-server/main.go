@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/ic-it/ezapi"
@@ -111,6 +113,27 @@ func main() {
 			},
 		))
 
+	// Echo Hello with middleware
+	mux.Handle("/hello/{name}", Middleware(
+		ezapi.H(
+			func(ctx ezapi.Context[HelloReq]) (HelloRep, ezapi.RespError) {
+				names := []string{ctx.GetReq().PathParams.Name}
+				names = append(names, ctx.GetReq().QueryParams.Names...)
+				names = append(names, ctx.GetReq().ContextParams.Names...)
+				message := "Hello, " + strings.Join(names, ", ") + "!"
+				log.Println("hello", message)
+				return HelloRep{Message: message}, nil
+			},
+		)))
+
 	log.Println("Listening on :8080")
 	http.ListenAndServe(":8080", mux)
+}
+
+func Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println("middleware, add name to the context")
+		r = r.WithContext(context.WithValue(r.Context(), "names", []string{"Alice", "Bob"}))
+		next.ServeHTTP(w, r)
+	})
 }

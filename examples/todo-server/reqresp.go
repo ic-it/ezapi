@@ -66,3 +66,20 @@ type DeleteTodoReq struct {
 		ID uuid.UUID `ezapi:"id"`
 	} `ezapi:"path"`
 }
+
+// Echo Hello
+type HelloReq struct {
+	PathParams struct {
+		Name string `ezapi:"name"`
+	} `ezapi:"path"`
+	QueryParams struct {
+		Names []string `ezapi:"name"`
+	} `ezapi:"query"`
+	ContextParams struct {
+		Names []string `ezapi:"names"`
+	} `ezapi:"context"`
+}
+
+type HelloRep struct {
+	Message string `json:"message"`
+}

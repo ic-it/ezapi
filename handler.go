@@ -20,7 +20,15 @@ func H[T any, U any](handler func(Context[T]) (U, RespError)) http.HandlerFunc {
 		ctxVals := map[string]interface{}{}
 
 		for _, p := range reflected.queryParams {
-			qParams[p.alias] = []string{r.URL.Query().Get(p.alias)}
+			vals, ok := r.URL.Query()[p.alias]
+			if !ok {
+				if !p.optional {
+					http.Error(w, "missing query param: "+p.alias, http.StatusBadRequest)
+					return
+				}
+				continue
+			}
+			qParams[p.alias] = vals
 		}
 
 		for _, p := range reflected.pathParams {

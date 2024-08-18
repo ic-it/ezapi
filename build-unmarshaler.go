@@ -62,7 +62,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 				return nil, errMissingParam
 			}
 
-			unmarshaled, err := unmarshalType(param.typ, value)
+			unmarshaled, err := unmarshalStrToType(param.typ, value)
 			if err != nil {
 				return nil, err
 			}
@@ -88,15 +88,26 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 				}
 				continue
 			}
-			// TODO: handle multiple values
-			if len(values) == 0 && values[0] == "" && !param.optional {
-				return nil, errMissingParam
-			}
 
-			// TODO: handle multiple values
-			unmarshaled, err := unmarshalType(param.typ, values[0])
-			if err != nil {
-				return nil, err
+			var unmarshaled any
+			var err error
+			if param.typ.Kind() == reflect.Slice {
+				if len(values) == 0 {
+					unmarshaled = reflect.Zero(param.typ).Interface()
+				} else {
+					unmarshaled, err = unmarshalSliceToType(param.typ, values)
+					if err != nil {
+						return nil, err
+					}
+				}
+			} else if param.typ.Kind() == reflect.String {
+				if len(values) == 0 {
+					unmarshaled = ""
+				} else {
+					unmarshaled = values[0]
+				}
+			} else {
+				return nil, errors.New("unsupported type")
 			}
 
 			field.Set(reflect.ValueOf(unmarshaled))
@@ -104,7 +115,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 		return v.Interface(), nil
 	}
 
-	conextValuesUnmarshaler := func(contextValues map[string]interface{}) (any, error) {
+	contextValuesUnmarshaler := func(contextValues map[string]interface{}) (any, error) {
 		v := reflect.New(reflected.contextValuesType).Elem()
 		for _, param := range reflected.contextValues {
 			field := v.FieldByName(param.fieldName)
@@ -126,7 +137,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 			var unmarshaled any
 			if str, ok := value.(string); ok {
 				var err error
-				unmarshaled, err = unmarshalType(param.typ, str)
+				unmarshaled, err = unmarshalStrToType(param.typ, str)
 				if err != nil {
 					return nil, err
 				}
@@ -190,7 +201,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 
 		// unmarshal context values
 		if reflected.hasContextValues() {
-			contextValuesStruct, err := conextValuesUnmarshaler(contextValues)
+			contextValuesStruct, err := contextValuesUnmarshaler(contextValues)
 			if err != nil {
 				return req.Interface().(T), err
 			}
@@ -204,7 +215,26 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 	}
 }
 
-func unmarshalType(typ reflect.Type, s string) (any, error) {
+func unmarshalSliceToType(typ reflect.Type, s []string) (any, error) {
+	switch typ.Kind() {
+	// SLICES
+	case reflect.Slice:
+		// Parse any other slice type
+		newSlice := reflect.MakeSlice(typ, 0, 0)
+		for _, part := range s {
+			v, err := unmarshalStrToType(typ.Elem(), part)
+			if err != nil {
+				return nil, err
+			}
+			newSlice = reflect.Append(newSlice, reflect.ValueOf(v))
+		}
+		return newSlice.Interface(), nil
+	default:
+		panic("unsupported type")
+	}
+}
+
+func unmarshalStrToType(typ reflect.Type, s string) (any, error) {
 	switch typ.Kind() {
 	// STRINGS
 	case reflect.String:
@@ -270,7 +300,7 @@ func unmarshalType(typ reflect.Type, s string) (any, error) {
 		panic("unsupported type")
 	// POINTERS
 	case reflect.Ptr:
-		v, err := unmarshalType(typ.Elem(), s)
+		v, err := unmarshalStrToType(typ.Elem(), s)
 		if err != nil {
 			return nil, err
 		}
