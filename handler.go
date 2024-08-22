@@ -11,6 +11,15 @@ type handlerOpts struct {
 	defaultUnmarshalErrorConstructor func(error) RespError
 }
 
+func newHandlerOpts() *handlerOpts {
+	return &handlerOpts{
+		contentType: "application/json",
+		defaultUnmarshalErrorConstructor: func(err error) RespError {
+			return DefaultUnmarshalError{Err: err}
+		},
+	}
+}
+
 type HandlerOpt func(*handlerOpts)
 
 func ContentType(contentType string) HandlerOpt {
@@ -26,15 +35,10 @@ func DefaultUnmarshalErrorConstructor(constructor func(error) RespError) Handler
 }
 
 func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt) http.HandlerFunc {
-	options := handlerOpts{
-		contentType: "application/json",
-		defaultUnmarshalErrorConstructor: func(err error) RespError {
-			return DefaultUnmarshalError{Err: err}
-		},
-	}
+	options := newHandlerOpts()
 
 	for _, opt := range opts {
-		opt(&options)
+		opt(options)
 	}
 
 	reflected := ReflectReq[T]()
@@ -58,19 +62,17 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 			if !ok {
 				if !p.optional {
 					missParamErr := MissingPathParamError{Param: p.alias}
-					if onUnmarshalError, ok := any(req).(OnUnmarshalError); ok {
-						err := onUnmarshalError.OnUnmarshalError(ctx, missParamErr)
-						if err != nil {
-							err := err.Render(ctx)
-							if err != nil {
-								http.Error(w, err.Error(), http.StatusInternalServerError)
+					if oue, ok := any(req).(OnUnmarshalError); ok {
+						if err := oue.OnUnmarshalError(ctx, missParamErr); err != nil {
+							if err := err.Render(ctx); err != nil {
+								DefaultInternalError{Err: err}.Render(ctx)
 							}
 						}
 						return
 					} else {
 						err := options.defaultUnmarshalErrorConstructor(missParamErr)
 						if err := err.Render(ctx); err != nil {
-							http.Error(w, err.Error(), http.StatusInternalServerError)
+							DefaultInternalError{Err: err}.Render(ctx)
 						}
 						return
 					}
@@ -85,19 +87,17 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 			if pp == "" {
 				if !p.optional {
 					missParamErr := MissingPathParamError{Param: p.alias}
-					if onUnmarshalError, ok := any(req).(OnUnmarshalError); ok {
-						err := onUnmarshalError.OnUnmarshalError(ctx, missParamErr)
-						if err != nil {
-							err := err.Render(ctx)
-							if err != nil {
-								http.Error(w, err.Error(), http.StatusInternalServerError)
+					if oue, ok := any(req).(OnUnmarshalError); ok {
+						if err := oue.OnUnmarshalError(ctx, missParamErr); err != nil {
+							if err := err.Render(ctx); err != nil {
+								DefaultInternalError{Err: err}.Render(ctx)
 							}
 						}
 						return
 					} else {
 						err := options.defaultUnmarshalErrorConstructor(missParamErr)
 						if err := err.Render(ctx); err != nil {
-							http.Error(w, err.Error(), http.StatusInternalServerError)
+							DefaultInternalError{Err: err}.Render(ctx)
 						}
 						return
 					}
@@ -113,19 +113,17 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 
 		req, err = unmarshler(r.Body, pParams, qParams, ctxVals)
 		if err != nil {
-			if onUnmarshalError, ok := any(req).(OnUnmarshalError); ok {
-				err := onUnmarshalError.OnUnmarshalError(ctx, err)
-				if err != nil {
-					err := err.Render(ctx)
-					if err != nil {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
+			if oue, ok := any(req).(OnUnmarshalError); ok {
+				if err := oue.OnUnmarshalError(ctx, err); err != nil {
+					if err := err.Render(ctx); err != nil {
+						DefaultInternalError{Err: err}.Render(ctx)
 					}
 				}
 				return
 			} else {
 				err := options.defaultUnmarshalErrorConstructor(err)
 				if err := err.Render(ctx); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
+					DefaultInternalError{Err: err}.Render(ctx)
 				}
 				return
 			}
@@ -134,9 +132,8 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 		// Validate the request
 		if validatable, ok := any(req).(Validatable); ok {
 			if err := validatable.Validate(ctx); err != nil {
-				err := err.Render(ctx)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
+				if err := err.Render(ctx); err != nil {
+					DefaultInternalError{Err: err}.Render(ctx)
 				}
 				return
 			}
@@ -147,7 +144,7 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 		if handleErr != nil {
 			err := handleErr.Render(ctx)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				DefaultInternalError{Err: err}.Render(ctx)
 			}
 			return
 		}
