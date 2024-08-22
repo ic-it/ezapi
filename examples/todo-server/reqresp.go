@@ -69,15 +69,22 @@ type DeleteTodoReq struct {
 
 // Echo Hello
 type HelloReq struct {
-	PathParams struct {
-		Name string `ezapi:"name"`
-	} `ezapi:"path"`
+	PathParams  *HelloReqPathParams `ezapi:"path"`
 	QueryParams struct {
 		Names []string `ezapi:"name"`
 	} `ezapi:"query"`
 	ContextParams struct {
 		Names []string `ezapi:"names"`
 	} `ezapi:"context"`
+}
+
+type HelloReqPathParams struct {
+	Name string `ezapi:"name"`
+}
+
+func (*HelloReqPathParams) Validate(ctx ezapi.BaseContext) ezapi.RespError {
+	log.Println("validating: hello path params")
+	return nil
 }
 
 type HelloRep struct {

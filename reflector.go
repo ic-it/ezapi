@@ -29,23 +29,27 @@ type reflectedReq struct {
 	typ reflect.Type
 
 	// JSON Body
-	jsonBodyType      reflect.Type
-	jsonBodyFieldName string
+	jsonBodyType        reflect.Type
+	jsonBodyFieldName   string
+	jsonBodyValidatorCb func(any, BaseContext) RespError
 
 	// Path Params
-	pathParamsType      reflect.Type
-	pathParams          []reflectedKeyVal
-	pathParamsFieldName string
+	pathParamsType        reflect.Type
+	pathParams            []reflectedKeyVal
+	pathParamsFieldName   string
+	pathParamsValidatorCb func(any, BaseContext) RespError
 
 	// Query Params
-	queryParamsType      reflect.Type
-	queryParams          []reflectedKeyVal
-	queryParamsFieldName string
+	queryParamsType        reflect.Type
+	queryParams            []reflectedKeyVal
+	queryParamsFieldName   string
+	queryParamsValidatorCb func(any, BaseContext) RespError
 
 	// Context Values
-	contextValuesType reflect.Type
-	contextValues     []reflectedKeyVal
-	contextValuesName string
+	contextValuesType  reflect.Type
+	contextValues      []reflectedKeyVal
+	contextValuesName  string
+	contextValidatorCb func(any, BaseContext) RespError
 }
 
 func (rq reflectedReq) hasJSONBody() bool {
@@ -99,18 +103,22 @@ func ReflectReq[T any]() reflectedReq {
 			case _EZAPI_TAG_JSON_BODY:
 				reflected.jsonBodyType = field.Type
 				reflected.jsonBodyFieldName = field.Name
+				reflected.jsonBodyValidatorCb = getValidatorCallback(field.Type, field.Name)
 			case _EZAPI_TAG_PATH_PARAMS:
 				reflected.pathParamsType = field.Type
 				reflected.pathParamsFieldName = field.Name
 				reflected.pathParams, errs = reflectParams(field.Type)
+				reflected.pathParamsValidatorCb = getValidatorCallback(field.Type, field.Name)
 			case _EZAPI_TAG_QUERY_PARAMS:
 				reflected.queryParamsType = field.Type
 				reflected.queryParamsFieldName = field.Name
 				reflected.queryParams, errs = reflectParams(field.Type)
+				reflected.queryParamsValidatorCb = getValidatorCallback(field.Type, field.Name)
 			case _EZAPI_TAG_CONTEXT:
 				reflected.contextValuesType = field.Type
 				reflected.contextValuesName = field.Name
 				reflected.contextValues, errs = reflectParams(field.Type)
+				reflected.contextValidatorCb = getValidatorCallback(field.Type, field.Name)
 			}
 		}
 
@@ -128,11 +136,32 @@ func ReflectReq[T any]() reflectedReq {
 	return reflected
 }
 
+func getIsValidatable(t reflect.Type) bool {
+	return t.Implements(reflect.TypeOf((*Validatable)(nil)).Elem())
+}
+
+func getValidatorCallback(t reflect.Type, fieldName string) func(any, BaseContext) RespError {
+	if !getIsValidatable(t) {
+		return nil
+	}
+	return func(req any, ctx BaseContext) RespError {
+		field := reflect.ValueOf(req).FieldByName(fieldName)
+		if !field.IsValid() {
+			return nil
+		}
+		validator := field.Interface().(Validatable)
+		return validator.Validate(ctx)
+	}
+}
+
 // helper function to reflect the parameters of a struct
 func reflectParams(t reflect.Type) ([]reflectedKeyVal, []error) {
 	var errs []error
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
 	if t.Kind() != reflect.Struct {
-		return nil, []error{ErrInvalidParamsType}
+		return nil, []error{errors.Join(ErrInvalidParamsType, fmt.Errorf("expected struct, got %s", t.Kind()))}
 	}
 	params := []reflectedKeyVal{}
 

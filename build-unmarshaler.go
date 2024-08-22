@@ -21,15 +21,6 @@ type unmarshaler[T any] func(
 
 // build unmarshaler for given reflectedReq
 func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
-	// TODO: support pointers
-	if reflected.hasPathParams() &&
-		reflected.pathParamsType.Kind() != reflect.Struct {
-		panic("pathParams must be a struct")
-	}
-	if reflected.hasQueryParams() &&
-		reflected.queryParamsType.Kind() != reflect.Struct {
-		panic("queryParams must be a struct")
-	}
 
 	// json body unmarshaler
 	jsonBodyUnmarshaler := func(body io.Reader) (any, error) {
@@ -45,7 +36,12 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 
 	// path params deserializer
 	pathParamsUnmarshaler := func(pathParams map[string]string) (any, error) {
-		v := reflect.New(reflected.pathParamsType).Elem()
+		pathParamsType := reflected.pathParamsType
+		isPtr := pathParamsType.Kind() == reflect.Ptr
+		if pathParamsType.Kind() == reflect.Ptr {
+			pathParamsType = pathParamsType.Elem()
+		}
+		v := reflect.New(pathParamsType).Elem()
 		for _, param := range reflected.pathParams {
 			debugErr := fmt.Errorf("alias: %s, field: %s", param.alias, param.fieldName)
 			field := v.FieldByName(param.fieldName)
@@ -71,12 +67,20 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 
 			field.Set(reflect.ValueOf(unmarshaled))
 		}
+		if isPtr {
+			return v.Addr().Interface(), nil
+		}
 		return v.Interface(), nil
 	}
 
 	// query params deserializer
 	queryParamsUnmarshaler := func(queryParams map[string][]string) (any, error) {
-		v := reflect.New(reflected.queryParamsType).Elem()
+		queryParamsType := reflected.queryParamsType
+		isPtr := queryParamsType.Kind() == reflect.Ptr
+		if queryParamsType.Kind() == reflect.Ptr {
+			queryParamsType = queryParamsType.Elem()
+		}
+		v := reflect.New(queryParamsType).Elem()
 		for _, param := range reflected.queryParams {
 			debugErr := fmt.Errorf("alias: %s, field: %s", param.alias, param.fieldName)
 			field := v.FieldByName(param.fieldName)
@@ -115,11 +119,19 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 
 			field.Set(reflect.ValueOf(unmarshaled))
 		}
+		if isPtr {
+			return v.Addr().Interface(), nil
+		}
 		return v.Interface(), nil
 	}
 
 	contextValuesUnmarshaler := func(contextValues map[string]any) (any, error) {
-		v := reflect.New(reflected.contextValuesType).Elem()
+		contextValuesType := reflected.contextValuesType
+		isPtr := contextValuesType.Kind() == reflect.Ptr
+		if contextValuesType.Kind() == reflect.Ptr {
+			contextValuesType = contextValuesType.Elem()
+		}
+		v := reflect.New(contextValuesType).Elem()
 		for _, param := range reflected.contextValues {
 			debugErr := fmt.Errorf("alias: %s, field: %s", param.alias, param.fieldName)
 			field := v.FieldByName(param.fieldName)
@@ -157,6 +169,10 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 			}
 
 			field.Set(reflect.ValueOf(unmarshaled))
+		}
+		// return v.Interface(), nil
+		if isPtr {
+			return v.Addr().Interface(), nil
 		}
 		return v.Interface(), nil
 	}

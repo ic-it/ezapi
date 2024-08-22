@@ -130,6 +130,47 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 		}
 
 		// Validate the request
+		// Validate query params
+		if validatorCb := reflected.queryParamsValidatorCb; validatorCb != nil {
+			if err := validatorCb(req, ctx); err != nil {
+				if err := err.Render(ctx); err != nil {
+					DefaultInternalError{Err: err}.Render(ctx)
+				}
+				return
+			}
+		}
+
+		// Validate path params
+		if validatorCb := reflected.pathParamsValidatorCb; validatorCb != nil {
+			if err := validatorCb(req, ctx); err != nil {
+				if err := err.Render(ctx); err != nil {
+					DefaultInternalError{Err: err}.Render(ctx)
+				}
+				return
+			}
+		}
+
+		// Validate context values
+		if validatorCb := reflected.contextValidatorCb; validatorCb != nil {
+			if err := validatorCb(req, ctx); err != nil {
+				if err := err.Render(ctx); err != nil {
+					DefaultInternalError{Err: err}.Render(ctx)
+				}
+				return
+			}
+		}
+
+		// Validate the json body
+		if validatorCb := reflected.jsonBodyValidatorCb; validatorCb != nil {
+			if err := validatorCb(req, ctx); err != nil {
+				if err := err.Render(ctx); err != nil {
+					DefaultInternalError{Err: err}.Render(ctx)
+				}
+				return
+			}
+		}
+
+		// Validate the request
 		if validatable, ok := any(req).(Validatable); ok {
 			if err := validatable.Validate(ctx); err != nil {
 				if err := err.Render(ctx); err != nil {
@@ -149,8 +190,19 @@ func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt
 			return
 		}
 
-		w.Header().Set("Content-Type", options.contentType)
-		json.NewEncoder(w).Encode(resp)
+		if textResp, ok := any(resp).(string); ok {
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte(textResp))
+		} else if renderable, ok := any(resp).(Renderable); ok {
+			if err := renderable.Render(ctx); err != nil {
+				DefaultInternalError{Err: err}.Render(ctx)
+			}
+		} else {
+			w.Header().Set("Content-Type", options.contentType)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				DefaultInternalError{Err: err}.Render(ctx)
+			}
+		}
 	}
 }
 
