@@ -1,6 +1,7 @@
 package ezapi
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -19,21 +20,29 @@ const (
 	// tag values for params
 	_EZAPI_TAG_OPTIONAL = "optional"
 	_EZAPI_TAG_REQUIRED = "required"
+	_EZAPI_TAG_ALIAS    = "alias"
+	_EZAPI_TAG_DESC     = "desc"
 )
 
 // to this struct represents the reflected struct
 type reflectedReq struct {
+	typ reflect.Type
+
+	// JSON Body
 	jsonBodyType      reflect.Type
 	jsonBodyFieldName string
 
+	// Path Params
 	pathParamsType      reflect.Type
 	pathParams          []reflectedKeyVal
 	pathParamsFieldName string
 
+	// Query Params
 	queryParamsType      reflect.Type
 	queryParams          []reflectedKeyVal
 	queryParamsFieldName string
 
+	// Context Values
 	contextValuesType reflect.Type
 	contextValues     []reflectedKeyVal
 	contextValuesName string
@@ -57,22 +66,27 @@ func (rq reflectedReq) hasContextValues() bool {
 
 // reflected key value pair
 type reflectedKeyVal struct {
+	// Field
 	typ       reflect.Type
 	fieldName string
 
 	// Modifiers
-	alias    string
-	optional bool
+	alias       string
+	aliasIsSet  bool
+	optional    bool
+	description string
 }
 
-// ReflectReq is a helper function that reflects the request struct
+// helper function to reflect the request struct
 func ReflectReq[T any]() reflectedReq {
 	var v T
-	var err error
+	var errs []error
 	t := reflect.TypeOf(v)
 
 	// Create a reflectedReq struct
-	reflected := reflectedReq{}
+	reflected := reflectedReq{
+		typ: t,
+	}
 
 	// Iterate over the fields of the struct
 	for i := 0; i < t.NumField(); i++ {
@@ -88,30 +102,37 @@ func ReflectReq[T any]() reflectedReq {
 			case _EZAPI_TAG_PATH_PARAMS:
 				reflected.pathParamsType = field.Type
 				reflected.pathParamsFieldName = field.Name
-				reflected.pathParams, err = reflectParams(field.Type)
+				reflected.pathParams, errs = reflectParams(field.Type)
 			case _EZAPI_TAG_QUERY_PARAMS:
 				reflected.queryParamsType = field.Type
 				reflected.queryParamsFieldName = field.Name
-				reflected.queryParams, err = reflectParams(field.Type)
+				reflected.queryParams, errs = reflectParams(field.Type)
 			case _EZAPI_TAG_CONTEXT:
 				reflected.contextValuesType = field.Type
 				reflected.contextValuesName = field.Name
-				reflected.contextValues, err = reflectParams(field.Type)
+				reflected.contextValues, errs = reflectParams(field.Type)
 			}
 		}
 
-		if err != nil {
-			panic(err)
+		// If there are errors, panic
+		if len(errs) > 0 {
+			for i, err := range errs {
+				errStr := err.Error()
+				errStr = strings.ReplaceAll(errStr, "\n", "\n| ")
+				fmt.Printf("Error %d: %s\n\n", i+1, errStr)
+			}
+			panic(fmt.Sprintf("error reflecting request struct '%s'", t.Name()))
 		}
 	}
 
 	return reflected
 }
 
-// reflectParams is a helper function that reflects the params struct
-func reflectParams(t reflect.Type) ([]reflectedKeyVal, error) {
+// helper function to reflect the parameters of a struct
+func reflectParams(t reflect.Type) ([]reflectedKeyVal, []error) {
+	var errs []error
 	if t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("params must be a struct %v", t)
+		return nil, []error{ErrInvalidParamsType}
 	}
 	params := []reflectedKeyVal{}
 
@@ -119,15 +140,18 @@ func reflectParams(t reflect.Type) ([]reflectedKeyVal, error) {
 		field := t.Field(i)
 		tag := field.Tag.Get(_EZAPI_TAG_NAME)
 
-		// If the field has the
+		// If the field has no tag, skip. It is not a parameter
 		if tag == "" {
 			continue
 		}
+
 		param := reflectedKeyVal{
-			typ:       field.Type,
-			fieldName: field.Name,
-			alias:     field.Name,
-			optional:  false,
+			typ:         field.Type,
+			fieldName:   field.Name,
+			alias:       field.Name, // TODO: add warning if alias is not set
+			aliasIsSet:  false,
+			optional:    false,
+			description: fmt.Sprintf("The %s parameter", field.Name),
 		}
 
 		// tag values
@@ -139,12 +163,45 @@ func reflectParams(t reflect.Type) ([]reflectedKeyVal, error) {
 			case _EZAPI_TAG_REQUIRED:
 				param.optional = false
 			default:
-				param.alias = tagValue
+				var name, value string
+				nameValue := strings.Split(tagValue, "=")
+				if len(nameValue) == 1 && !param.aliasIsSet {
+					param.alias = nameValue[0]
+					param.aliasIsSet = true
+					continue
+				}
+
+				if len(nameValue) >= 1 {
+					name = nameValue[0]
+				}
+				if len(nameValue) >= 2 {
+					value = nameValue[1]
+				}
+
+				if name == "" || value == "" {
+					errs = append(errs, errors.Join(ErrInvalidTag, fmt.Errorf("should be in the format key=value, got '%s'", tagValue)))
+					continue
+				}
+				switch name {
+				case _EZAPI_TAG_ALIAS:
+					param.alias = value
+					param.aliasIsSet = true
+				case _EZAPI_TAG_DESC:
+					param.description = value
+				default:
+					errs = append(errs, fmt.Errorf("unknown tag value '%s'", name))
+					continue
+				}
 			}
 		}
 
 		params = append(params, param)
 	}
 
-	return params, nil
+	return params, errs
 }
+
+var (
+	ErrInvalidParamsType = errors.New("invalid type for parameters")
+	ErrInvalidTag        = errors.New("invalid tag")
+)

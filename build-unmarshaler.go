@@ -4,6 +4,7 @@ import (
 	"encoding"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"strconv"
@@ -15,7 +16,7 @@ type unmarshaler[T any] func(
 	body io.Reader,
 	pathParams map[string]string,
 	queryParams map[string][]string,
-	contextValues map[string]interface{},
+	contextValues map[string]any,
 ) (T, error)
 
 // build unmarshaler for given reflectedReq
@@ -46,25 +47,26 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 	pathParamsUnmarshaler := func(pathParams map[string]string) (any, error) {
 		v := reflect.New(reflected.pathParamsType).Elem()
 		for _, param := range reflected.pathParams {
+			debugErr := fmt.Errorf("alias: %s, field: %s", param.alias, param.fieldName)
 			field := v.FieldByName(param.fieldName)
 			if !field.IsValid() {
-				return nil, errInvalidField
+				return nil, errors.Join(ErrInvalidField, debugErr)
 			}
 
 			value, ok := pathParams[param.alias]
 			if !ok {
 				if !param.optional {
-					return nil, errMissingParam
+					return nil, errors.Join(ErrMissingPathParam, debugErr)
 				}
 				continue
 			}
 			if value == "" && !param.optional {
-				return nil, errMissingParam
+				return nil, errors.Join(ErrMissingPathParam, debugErr)
 			}
 
 			unmarshaled, err := unmarshalStrToType(param.typ, value)
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(err, debugErr)
 			}
 
 			field.Set(reflect.ValueOf(unmarshaled))
@@ -76,15 +78,16 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 	queryParamsUnmarshaler := func(queryParams map[string][]string) (any, error) {
 		v := reflect.New(reflected.queryParamsType).Elem()
 		for _, param := range reflected.queryParams {
+			debugErr := fmt.Errorf("alias: %s, field: %s", param.alias, param.fieldName)
 			field := v.FieldByName(param.fieldName)
 			if !field.IsValid() {
-				return nil, errInvalidField
+				return nil, errors.Join(ErrInvalidField, debugErr)
 			}
 
 			values, ok := queryParams[param.alias]
 			if !ok {
 				if !param.optional {
-					return nil, errMissingParam
+					return nil, errors.Join(ErrMissingQueryParam, debugErr)
 				}
 				continue
 			}
@@ -97,7 +100,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 				} else {
 					unmarshaled, err = unmarshalSliceToType(param.typ, values)
 					if err != nil {
-						return nil, err
+						return nil, errors.Join(err, debugErr)
 					}
 				}
 			} else if param.typ.Kind() == reflect.String {
@@ -107,7 +110,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 					unmarshaled = values[0]
 				}
 			} else {
-				return nil, errors.New("unsupported type")
+				return nil, errors.Join(ErrorUnsuppType, debugErr)
 			}
 
 			field.Set(reflect.ValueOf(unmarshaled))
@@ -115,23 +118,24 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 		return v.Interface(), nil
 	}
 
-	contextValuesUnmarshaler := func(contextValues map[string]interface{}) (any, error) {
+	contextValuesUnmarshaler := func(contextValues map[string]any) (any, error) {
 		v := reflect.New(reflected.contextValuesType).Elem()
 		for _, param := range reflected.contextValues {
+			debugErr := fmt.Errorf("alias: %s, field: %s", param.alias, param.fieldName)
 			field := v.FieldByName(param.fieldName)
 			if !field.IsValid() {
-				return nil, errInvalidField
+				return nil, errors.Join(ErrInvalidField, debugErr)
 			}
 
 			value, ok := contextValues[param.alias]
 			if !ok {
 				if !param.optional {
-					return nil, errMissingParam
+					return nil, errors.Join(ErrMissingContextValue, debugErr)
 				}
 				continue
 			}
 			if value == nil && !param.optional {
-				return nil, errMissingParam
+				return nil, errors.Join(ErrMissingContextValue, debugErr)
 			}
 
 			var unmarshaled any
@@ -139,10 +143,17 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 				var err error
 				unmarshaled, err = unmarshalStrToType(param.typ, str)
 				if err != nil {
-					return nil, err
+					return nil, errors.Join(err, debugErr)
 				}
 			} else {
 				unmarshaled = value
+			}
+
+			// check type mismatch
+			if reflect.TypeOf(unmarshaled) != param.typ {
+				return nil, errors.Join(ErrTypeMismatch, debugErr,
+					fmt.Errorf("expected type %v, got %v", param.typ, reflect.TypeOf(unmarshaled)),
+				)
 			}
 
 			field.Set(reflect.ValueOf(unmarshaled))
@@ -155,7 +166,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 		body io.Reader,
 		pathParams map[string]string,
 		queryParams map[string][]string,
-		contextValues map[string]interface{},
+		contextValues map[string]any,
 	) (T, error) {
 		var req reflect.Value
 		{
@@ -319,6 +330,10 @@ func unmarshalStrToType(typ reflect.Type, s string) (any, error) {
 }
 
 var (
-	errInvalidField = errors.New("invalid field")
-	errMissingParam = errors.New("missing param")
+	ErrInvalidField        = errors.New("invalid field")
+	ErrMissingQueryParam   = errors.New("missing query param")
+	ErrMissingPathParam    = errors.New("missing path param")
+	ErrMissingContextValue = errors.New("missing context value")
+	ErrTypeMismatch        = errors.New("type mismatch")
+	ErrorUnsuppType        = errors.New("unsupported type")
 )

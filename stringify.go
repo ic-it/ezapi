@@ -3,18 +3,34 @@ package ezapi
 import "fmt"
 
 func (r reflectedReq) String() string {
-	return fmt.Sprintf(
-		"ReflectedReq{jsonBodyType: %v, jsonBodyFieldName: %v, pathParams: %v, pathParamsFieldName: %v, queryParams: %v, queryParamsFieldName: %v}",
+	return fmt.Sprintf(`EzAPI Reflected Request:
+	NAME: %v
+	JSON Body: %v
+	Path Params: %v
+	Query Params: %v
+	Context Values: %v`,
+		r.typ.Name(),
 		r.jsonBodyType,
-		r.jsonBodyFieldName,
 		r.pathParams,
-		r.pathParamsFieldName,
 		r.queryParams,
-		r.queryParamsFieldName,
+		r.contextValues,
 	)
 }
 
 func (p reflectedKeyVal) String() string {
-	return fmt.Sprintf("ReflectedParam{typ: %v, fieldName: %v, alias: %v, optional: %v}",
-		p.typ, p.fieldName, p.alias, p.optional)
+	return fmt.Sprintf("ReflectedKeyVal{ "+
+		"Type: %v; "+
+		"Field Name: %v; "+
+		"Alias: %v; "+
+		"Alias Is Set: %v; "+
+		"Optional: %v; "+
+		"Description: %v; "+
+		"}",
+		p.typ,
+		p.fieldName,
+		p.alias,
+		p.aliasIsSet,
+		p.optional,
+		p.description,
+	)
 }

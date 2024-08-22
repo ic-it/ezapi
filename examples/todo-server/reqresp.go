@@ -24,7 +24,7 @@ func (req CreateTodoReq) Validate(ctx ezapi.BaseContext) ezapi.RespError {
 // Get
 type GetTodoReq struct {
 	PathParams struct {
-		ID uuid.UUID `ezapi:"id"`
+		ID uuid.UUID `ezapi:"alias=id"`
 	} `ezapi:"path"`
 }
 
@@ -82,4 +82,9 @@ type HelloReq struct {
 
 type HelloRep struct {
 	Message string `json:"message"`
+}
+
+func (req HelloReq) OnUnmarshalError(ctx ezapi.BaseContext, err error) ezapi.RespError {
+	log.Println("unmarshalling error: hello, ", err)
+	return ezapi.DefaultUnmarshalError{Err: err}
 }

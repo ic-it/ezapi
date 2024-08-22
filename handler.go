@@ -5,11 +5,45 @@ import (
 	"net/http"
 )
 
-func H[T any, U any](handler func(Context[T]) (U, RespError)) http.HandlerFunc {
+type handlerOpts struct {
+	//
+	contentType                      string
+	defaultUnmarshalErrorConstructor func(error) RespError
+}
+
+type HandlerOpt func(*handlerOpts)
+
+func ContentType(contentType string) HandlerOpt {
+	return func(o *handlerOpts) {
+		o.contentType = contentType
+	}
+}
+
+func DefaultUnmarshalErrorConstructor(constructor func(error) RespError) HandlerOpt {
+	return func(o *handlerOpts) {
+		o.defaultUnmarshalErrorConstructor = constructor
+	}
+}
+
+func H[T any, U any](handler func(Context[T]) (U, RespError), opts ...HandlerOpt) http.HandlerFunc {
+	options := handlerOpts{
+		contentType: "application/json",
+		defaultUnmarshalErrorConstructor: func(err error) RespError {
+			return DefaultUnmarshalError{Err: err}
+		},
+	}
+
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	reflected := ReflectReq[T]()
 	unmarshler := BuildUnmarshaler[T](reflected)
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		var req T
+		var err error
+
 		ctx := ezapiContext[T]{
 			r: r,
 			w: w,
@@ -17,14 +51,29 @@ func H[T any, U any](handler func(Context[T]) (U, RespError)) http.HandlerFunc {
 
 		qParams := map[string][]string{}
 		pParams := map[string]string{}
-		ctxVals := map[string]interface{}{}
+		ctxVals := map[string]any{}
 
 		for _, p := range reflected.queryParams {
 			vals, ok := r.URL.Query()[p.alias]
 			if !ok {
 				if !p.optional {
-					http.Error(w, "missing query param: "+p.alias, http.StatusBadRequest)
-					return
+					missParamErr := MissingPathParamError{Param: p.alias}
+					if onUnmarshalError, ok := any(req).(OnUnmarshalError); ok {
+						err := onUnmarshalError.OnUnmarshalError(ctx, missParamErr)
+						if err != nil {
+							err := err.Render(ctx)
+							if err != nil {
+								http.Error(w, err.Error(), http.StatusInternalServerError)
+							}
+						}
+						return
+					} else {
+						err := options.defaultUnmarshalErrorConstructor(missParamErr)
+						if err := err.Render(ctx); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+						}
+						return
+					}
 				}
 				continue
 			}
@@ -32,14 +81,37 @@ func H[T any, U any](handler func(Context[T]) (U, RespError)) http.HandlerFunc {
 		}
 
 		for _, p := range reflected.pathParams {
-			pParams[p.alias] = r.PathValue(p.alias)
+			pp := r.PathValue(p.alias)
+			if pp == "" {
+				if !p.optional {
+					missParamErr := MissingPathParamError{Param: p.alias}
+					if onUnmarshalError, ok := any(req).(OnUnmarshalError); ok {
+						err := onUnmarshalError.OnUnmarshalError(ctx, missParamErr)
+						if err != nil {
+							err := err.Render(ctx)
+							if err != nil {
+								http.Error(w, err.Error(), http.StatusInternalServerError)
+							}
+						}
+						return
+					} else {
+						err := options.defaultUnmarshalErrorConstructor(missParamErr)
+						if err := err.Render(ctx); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+						}
+						return
+					}
+				}
+				continue
+			}
+			pParams[p.alias] = pp
 		}
 
 		for _, p := range reflected.contextValues {
 			ctxVals[p.alias] = r.Context().Value(p.alias)
 		}
 
-		req, err := unmarshler(r.Body, pParams, qParams, ctxVals)
+		req, err = unmarshler(r.Body, pParams, qParams, ctxVals)
 		if err != nil {
 			if onUnmarshalError, ok := any(req).(OnUnmarshalError); ok {
 				err := onUnmarshalError.OnUnmarshalError(ctx, err)
@@ -51,15 +123,17 @@ func H[T any, U any](handler func(Context[T]) (U, RespError)) http.HandlerFunc {
 				}
 				return
 			} else {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				err := options.defaultUnmarshalErrorConstructor(err)
+				if err := err.Render(ctx); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 				return
 			}
 		}
 
 		// Validate the request
 		if validatable, ok := any(req).(Validatable); ok {
-			err := validatable.Validate(ctx)
-			if err != nil {
+			if err := validatable.Validate(ctx); err != nil {
 				err := err.Render(ctx)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -78,7 +152,23 @@ func H[T any, U any](handler func(Context[T]) (U, RespError)) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", options.contentType)
 		json.NewEncoder(w).Encode(resp)
 	}
+}
+
+type MissingQueryParamError struct {
+	Param string
+}
+
+func (e MissingQueryParamError) Error() string {
+	return "missing query param: " + e.Param
+}
+
+type MissingPathParamError struct {
+	Param string
+}
+
+func (e MissingPathParamError) Error() string {
+	return "missing path param: " + e.Param
 }

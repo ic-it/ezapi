@@ -23,8 +23,8 @@ func main() {
 		"/todo",
 		ezapi.H(
 			func(ctx ezapi.Context[CreateTodoReq]) (todo.TodoIDOnly, ezapi.RespError) {
-				log.Println("create-todo", ctx.GetReq().JSONBody)
 				req := ctx.GetReq()
+				log.Println("create-todo", req.JSONBody)
 				newTodo := todo.Todo{
 					TodoIDOnly: todo.TodoIDOnly{ID: uuid.New()},
 					BaseTodo:   *req.JSONBody,
@@ -40,8 +40,8 @@ func main() {
 		"/todo/{id}/get",
 		ezapi.H(
 			func(ctx ezapi.Context[GetTodoReq]) (*todo.Todo, ezapi.RespError) {
-				log.Println("get-todo", ctx.GetReq().PathParams)
 				req := ctx.GetReq()
+				log.Println("get-todo", req.PathParams)
 				todo, ok := todos[req.PathParams.ID]
 				if !ok {
 					return nil, TodoNotFoundError{ID: req.PathParams.ID}
@@ -56,14 +56,14 @@ func main() {
 		"/todos",
 		ezapi.H(
 			func(ctx ezapi.Context[GetAllTodosReq]) (GetAllTodosRep, ezapi.RespError) {
-				log.Println("get-all-todos", ctx.GetReq().QueryParams)
 				req := ctx.GetReq()
+				log.Println("get-all-todos", req.QueryParams)
 				var filteredTodos []todo.Todo
 				for _, todo := range todos {
-					if req.QueryParams.Title != "" && todo.Title != req.QueryParams.Title {
+					if req.QueryParams.Title != "" && !strings.Contains(todo.Title, req.QueryParams.Title) {
 						continue
 					}
-					if req.QueryParams.Description != "" && todo.Description != req.QueryParams.Description {
+					if req.QueryParams.Description != "" && !strings.Contains(todo.Description, req.QueryParams.Description) {
 						continue
 					}
 					filteredTodos = append(filteredTodos, todo)
@@ -78,8 +78,8 @@ func main() {
 		"/todo/{id}/update",
 		ezapi.H(
 			func(ctx ezapi.Context[UpdateTodoReq]) (*todo.TodoIDOnly, ezapi.RespError) {
-				log.Println("update-todo", ctx.GetReq().PathParams, ctx.GetReq().JSONBody)
 				req := ctx.GetReq()
+				log.Println("update-todo", req.PathParams, req.JSONBody)
 				updTodo, ok := todos[req.PathParams.ID]
 				if !ok {
 					return nil, TodoNotFoundError{ID: req.PathParams.ID}
@@ -101,8 +101,8 @@ func main() {
 		"/todo/{id}/delete",
 		ezapi.H(
 			func(ctx ezapi.Context[DeleteTodoReq]) (*todo.TodoIDOnly, ezapi.RespError) {
-				log.Println("delete-todo", ctx.GetReq().PathParams)
 				req := ctx.GetReq()
+				log.Println("delete-todo", req.PathParams)
 				dTodo, ok := todos[req.PathParams.ID]
 				if !ok {
 					return nil, TodoNotFoundError{ID: req.PathParams.ID}
