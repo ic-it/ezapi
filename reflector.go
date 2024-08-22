@@ -101,20 +101,36 @@ func ReflectReq[T any]() reflectedReq {
 		if tag != "" {
 			switch tag {
 			case _EZAPI_TAG_JSON_BODY:
+				if reflected.hasJSONBody() {
+					errs = append(errs, fmt.Errorf("NOW allow only one jsonBody tag per struct"))
+					continue
+				}
 				reflected.jsonBodyType = field.Type
 				reflected.jsonBodyFieldName = field.Name
 				reflected.jsonBodyValidatorCb = getValidatorCallback(field.Type, field.Name)
 			case _EZAPI_TAG_PATH_PARAMS:
+				if reflected.hasPathParams() {
+					errs = append(errs, fmt.Errorf("NOW allow only one path tag per struct"))
+					continue
+				}
 				reflected.pathParamsType = field.Type
 				reflected.pathParamsFieldName = field.Name
 				reflected.pathParams, errs = reflectParams(field.Type)
 				reflected.pathParamsValidatorCb = getValidatorCallback(field.Type, field.Name)
 			case _EZAPI_TAG_QUERY_PARAMS:
+				if reflected.hasQueryParams() {
+					errs = append(errs, fmt.Errorf("NOW allow only one query tag per struct"))
+					continue
+				}
 				reflected.queryParamsType = field.Type
 				reflected.queryParamsFieldName = field.Name
 				reflected.queryParams, errs = reflectParams(field.Type)
 				reflected.queryParamsValidatorCb = getValidatorCallback(field.Type, field.Name)
 			case _EZAPI_TAG_CONTEXT:
+				if reflected.hasContextValues() {
+					errs = append(errs, fmt.Errorf("NOW allow only one context tag per struct"))
+					continue
+				}
 				reflected.contextValuesType = field.Type
 				reflected.contextValuesName = field.Name
 				reflected.contextValues, errs = reflectParams(field.Type)
