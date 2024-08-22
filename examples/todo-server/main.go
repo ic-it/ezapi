@@ -116,7 +116,7 @@ func main() {
 	// Echo Hello with middleware
 	mux.Handle("/hello/{name}", Middleware(
 		ezapi.H(
-			func(ctx ezapi.Context[HelloReq]) (HelloRep, ezapi.RespError) {
+			func(ctx ezapi.Context[*HelloReq]) (HelloRep, ezapi.RespError) {
 				names := []string{ctx.GetReq().PathParams.Name}
 				names = append(names, ctx.GetReq().QueryParams.Names...)
 				names = append(names, ctx.GetReq().ContextParams.Names...)

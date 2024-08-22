@@ -26,7 +26,8 @@ const (
 
 // to this struct represents the reflected struct
 type reflectedReq struct {
-	typ reflect.Type
+	typ   reflect.Type
+	isPtr bool
 
 	// JSON Body
 	jsonBodyType        reflect.Type
@@ -86,10 +87,15 @@ func ReflectReq[T any]() reflectedReq {
 	var v T
 	var errs []error
 	t := reflect.TypeOf(v)
+	isPtr := t.Kind() == reflect.Ptr
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
 
 	// Create a reflectedReq struct
 	reflected := reflectedReq{
-		typ: t,
+		typ:   t,
+		isPtr: isPtr,
 	}
 
 	// Iterate over the fields of the struct
@@ -161,7 +167,11 @@ func getValidatorCallback(t reflect.Type, fieldName string) func(any, BaseContex
 		return nil
 	}
 	return func(req any, ctx BaseContext) RespError {
-		field := reflect.ValueOf(req).FieldByName(fieldName)
+		reqVal := reflect.ValueOf(req)
+		if reqVal.Kind() == reflect.Ptr {
+			reqVal = reqVal.Elem()
+		}
+		field := reqVal.FieldByName(fieldName)
 		if !field.IsValid() {
 			return nil
 		}

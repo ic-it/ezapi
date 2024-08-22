@@ -87,6 +87,11 @@ func (*HelloReqPathParams) Validate(ctx ezapi.BaseContext) ezapi.RespError {
 	return nil
 }
 
+func (*HelloReq) Validate(ctx ezapi.BaseContext) ezapi.RespError {
+	log.Println("validating: hello")
+	return nil
+}
+
 type HelloRep struct {
 	Message string `json:"message"`
 }

@@ -184,11 +184,7 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 		queryParams map[string][]string,
 		contextValues map[string]any,
 	) (T, error) {
-		var req reflect.Value
-		{
-			var t T
-			req = reflect.New(reflect.TypeOf(t)).Elem()
-		}
+		req := reflect.New(reflected.typ).Elem()
 
 		// unmarshal json body
 		if reflected.hasJSONBody() {
@@ -237,7 +233,9 @@ func BuildUnmarshaler[T any](reflected reflectedReq) unmarshaler[T] {
 				field.Set(reflect.ValueOf(contextValuesStruct))
 			}
 		}
-
+		if reflected.isPtr {
+			return req.Addr().Interface().(T), nil
+		}
 		return req.Interface().(T), nil
 	}
 }
