@@ -1,6 +1,9 @@
 package ezapi
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // Unmarshal Error (400)
 type DefaultUnmarshalError struct {
@@ -13,7 +16,7 @@ func (e DefaultUnmarshalError) Error() string {
 
 func (e DefaultUnmarshalError) Render(ctx BaseContext) error {
 	w := ctx.GetW()
-	w.WriteHeader(400)
+	w.WriteHeader(http.StatusBadRequest)
 	errorBody := EzAPIError{Message: "Error unmarshalling request: " + e.Error()}
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(errorBody)
@@ -30,7 +33,7 @@ func (e DefaultInternalError) Error() string {
 
 func (e DefaultInternalError) Render(ctx BaseContext) error {
 	w := ctx.GetW()
-	w.WriteHeader(500)
+	w.WriteHeader(http.StatusInternalServerError)
 	errorBody := EzAPIError{Message: "Internal server error: " + e.Error()}
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(errorBody)
